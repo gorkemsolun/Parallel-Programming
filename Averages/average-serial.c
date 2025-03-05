@@ -1,3 +1,8 @@
+// Görkem Kadir Solun 22003214
+// Usage: ./average-serial input_file
+// Reads a list of integers from the input file and calculates the average.
+
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -22,7 +27,7 @@ int main(int argc, char* argv[]) {
 
     int value;
     long long sum = 0;
-    for (int i = 0; i < n; i++) {   
+    for (int i = 0; i < n; i++) {
         if (fscanf(file, "%d", &value) != 1) {
             fprintf(stderr, "Error reading element %d\n", i);
             fclose(file);
