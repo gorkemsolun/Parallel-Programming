@@ -1,5 +1,5 @@
 // Görkem Kadir Solun 22003214
-// Usage: mpirun -np number_of_processes ./average-mpi-ppv2 input_file
+// Usage: mpirun -np number_of_processes ./average-mpi-ppv2 input_file output_file
 // Reads a list of integers from the input file and calculates the average.
 
 #include <mpi.h>
@@ -12,9 +12,9 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    if (argc != 2) {
+    if (argc != 3) {
         if (rank == 0) {
-            fprintf(stderr, "Usage: %s input_file\n", argv[0]);
+            fprintf(stderr, "Usage: %s input_file output_file\n", argv[0]);
         }
         MPI_Finalize();
         return EXIT_FAILURE;
@@ -24,46 +24,46 @@ int main(int argc, char* argv[]) {
     int* data = NULL;
 
     if (rank == 0) {
-        FILE* file = fopen(argv[1], "r");
-        if (!file) {
-            perror("Error opening file");
+        FILE* input_file = fopen(argv[1], "r");
+        if (!input_file) {
+            perror("Error opening input file");
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
 
-        if (fscanf(file, "%d", &n) != 1) {
+        if (fscanf(input_file, "%d", &n) != 1) {
             fprintf(stderr, "Error reading number of elements\n");
-            fclose(file);
+            fclose(input_file);
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
 
         if (n % size != 0) {
-            fprintf(stderr, "Error: number of elements (%d) is not divisible by number of processes (%d).\n", n, size);
-            fclose(file);
+            fprintf(stderr, "Error: %d elements not divisible by %d processes.\n", n, size);
+            fclose(input_file);
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
 
         data = (int*) malloc(n * sizeof(int));
-        if (data == NULL) {
+        if (!data) {
             fprintf(stderr, "Memory allocation failed\n");
-            fclose(file);
+            fclose(input_file);
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
 
         for (int i = 0; i < n; i++) {
-            if (fscanf(file, "%d", &data[i]) != 1) {
+            if (fscanf(input_file, "%d", &data[i]) != 1) {
                 fprintf(stderr, "Error reading element %d\n", i);
-                fclose(file);
+                fclose(input_file);
                 MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
             }
         }
-        fclose(file);
+        fclose(input_file);
     }
 
     MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    int local_n = n / size; // n is divisible by size. Each process gets the same number of elements.
+    int local_n = n / size;
     int* local_data = (int*) malloc(local_n * sizeof(int));
-    if (local_data == NULL) {
+    if (!local_data) {
         fprintf(stderr, "Process %d: Memory allocation failed\n", rank);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
@@ -79,8 +79,14 @@ int main(int argc, char* argv[]) {
     MPI_Reduce(&local_sum, &global_sum, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
 
     if (rank == 0) {
+        FILE* output_file = fopen(argv[2], "w");
+        if (!output_file) {
+            perror("Error opening output file");
+            MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        }
         double average = (double) global_sum / n;
-        printf("Average: %f\n", average);
+        fprintf(output_file, "%f", average);
+        fclose(output_file);
     }
 
     free(local_data);
