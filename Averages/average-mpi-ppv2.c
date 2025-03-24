@@ -78,7 +78,7 @@ int main(int argc, char* argv[]) {
     }
 
     long long global_sum = 0;
-    MPI_Reduce(&local_sum, &global_sum, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_sum, &global_sum, 1, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
 
     if (rank == 0) {
         FILE* output_file = fopen(argv[2], "w");
@@ -101,7 +101,8 @@ int main(int argc, char* argv[]) {
     double max_elapsed;
     MPI_Reduce(&local_elapsed, &max_elapsed, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     if (rank == 0) {
-        printf("Longest run time for average mpi ppv2: %f seconds, input size: %d, process count: %d\n", max_elapsed, n, size);
+        printf("Longest run time for average mpi ppv2: %f seconds, input size: %d, process count: %d\n",
+            max_elapsed, n, size);
     }
 
     MPI_Finalize();
