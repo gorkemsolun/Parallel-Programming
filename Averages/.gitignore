@@ -3,3 +3,5 @@ average-mpi-ppv2
 average-serial
 bucket_average-serial
 bucket_average-mpi
+output.out
+error.err
