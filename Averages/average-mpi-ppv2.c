@@ -12,6 +12,8 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+    double start_time = MPI_Wtime();
+
     if (argc != 3) {
         if (rank == 0) {
             fprintf(stderr, "Usage: %s input_file output_file\n", argv[0]);
@@ -92,6 +94,14 @@ int main(int argc, char* argv[]) {
     free(local_data);
     if (rank == 0) {
         free(data);
+    }
+
+    double end_time = MPI_Wtime();
+    double local_elapsed = end_time - start_time;
+    double max_elapsed;
+    MPI_Reduce(&local_elapsed, &max_elapsed, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    if (rank == 0) {
+        printf("Longest run time for average mpi ppv2: %f seconds, input size: %d, process count: %d\n", max_elapsed, n, size);
     }
 
     MPI_Finalize();

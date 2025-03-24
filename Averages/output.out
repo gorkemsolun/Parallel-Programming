@@ -1,0 +1,48 @@
+gcc -Wall -O2 -o average-serial average-serial.c
+mpicc -Wall -O2 -o average-mpi-ppv2 average-mpi-ppv2.c
+gcc -Wall -O2 -o bucket_average-serial bucket_average-serial.c
+mpicc -Wall -O2 -o bucket_average-mpi bucket_average-mpi.c
+Time elapsed for average serial: 0.000150 seconds, input size: 1000
+Time elapsed for average serial: 0.002411 seconds, input size: 50000
+Time elapsed for average serial: 0.004693 seconds, input size: 100000
+Time elapsed for average serial: 0.007060 seconds, input size: 150000
+Time elapsed: 0.000182 seconds for bucket average serial input count: 1000
+Time elapsed: 0.003977 seconds for bucket average serial input count: 50000
+Time elapsed: 0.007881 seconds for bucket average serial input count: 100000
+Time elapsed: 0.011765 seconds for bucket average serial input count: 150000
+Longest process time for average mpi ppv1: 0.047494 seconds, input size: 1000, process count: 50
+Longest process time for average mpi ppv1: 0.027580 seconds, input size: 50000, process count: 50
+Longest process time for average mpi ppv1: 0.037638 seconds, input size: 100000, process count: 50
+Longest process time for average mpi ppv1: 0.030647 seconds, input size: 150000, process count: 50
+Longest process time for average mpi ppv1: 0.474794 seconds, input size: 1000, process count: 100
+Longest process time for average mpi ppv1: 0.459846 seconds, input size: 50000, process count: 100
+Longest process time for average mpi ppv1: 0.460214 seconds, input size: 100000, process count: 100
+Longest process time for average mpi ppv1: 0.465245 seconds, input size: 150000, process count: 100
+Longest process time for average mpi ppv1: 3.170644 seconds, input size: 1000, process count: 200
+Longest process time for average mpi ppv1: 3.178389 seconds, input size: 50000, process count: 200
+Longest process time for average mpi ppv1: 3.202400 seconds, input size: 100000, process count: 200
+Longest process time for average mpi ppv1: 3.145628 seconds, input size: 150000, process count: 200
+Longest run time for average mpi ppv2: 0.038609 seconds, input size: 1000, process count: 50
+Longest run time for average mpi ppv2: 0.027822 seconds, input size: 50000, process count: 50
+Longest run time for average mpi ppv2: 0.027434 seconds, input size: 100000, process count: 50
+Longest run time for average mpi ppv2: 0.014702 seconds, input size: 150000, process count: 50
+Longest run time for average mpi ppv2: 0.473126 seconds, input size: 1000, process count: 100
+Longest run time for average mpi ppv2: 0.460524 seconds, input size: 50000, process count: 100
+Longest run time for average mpi ppv2: 0.464498 seconds, input size: 100000, process count: 100
+Longest run time for average mpi ppv2: 0.441346 seconds, input size: 150000, process count: 100
+Longest run time for average mpi ppv2: 3.202640 seconds, input size: 1000, process count: 200
+Longest run time for average mpi ppv2: 3.105743 seconds, input size: 50000, process count: 200
+Longest run time for average mpi ppv2: 3.183370 seconds, input size: 100000, process count: 200
+Longest run time for average mpi ppv2: 3.206168 seconds, input size: 150000, process count: 200
+Longest running process time for bucket average mpi: 0.054694, input count: 1000, process count: 50
+Longest running process time for bucket average mpi: 0.037697, input count: 50000, process count: 50
+Longest running process time for bucket average mpi: 0.024521, input count: 100000, process count: 50
+Longest running process time for bucket average mpi: 0.021849, input count: 150000, process count: 50
+Longest running process time for bucket average mpi: 0.451956, input count: 1000, process count: 100
+Longest running process time for bucket average mpi: 0.479094, input count: 50000, process count: 100
+Longest running process time for bucket average mpi: 0.463877, input count: 100000, process count: 100
+Longest running process time for bucket average mpi: 0.449107, input count: 150000, process count: 100
+Longest running process time for bucket average mpi: 3.110954, input count: 1000, process count: 200
+Longest running process time for bucket average mpi: 3.199700, input count: 50000, process count: 200
+Longest running process time for bucket average mpi: 3.179874, input count: 100000, process count: 200
+Longest running process time for bucket average mpi: 3.169350, input count: 150000, process count: 200
