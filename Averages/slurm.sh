@@ -63,17 +63,17 @@ mpirun -np 200 ./average-mpi-ppv2 input_50000.txt output_ppv2_50000.txt
 mpirun -np 200 ./average-mpi-ppv2 input_100000.txt output_ppv2_100000.txt
 mpirun -np 200 ./average-mpi-ppv2 input_150000.txt output_ppv2_150000.txt
 
-mpirun -np 50 ./bucket_average-mpi input_buckets_1000.txt output_buckets_serial_1000.txt
-mpirun -np 50 ./bucket_average-mpi input_buckets_50000.txt output_buckets_serial_50000.txt
-mpirun -np 50 ./bucket_average-mpi input_buckets_100000.txt output_buckets_serial_100000.txt
-mpirun -np 50 ./bucket_average-mpi input_buckets_150000.txt output_buckets_serial_150000.txt
+mpirun -np 50 ./bucket_average-mpi input_buckets_1000.txt output_buckets_mpi_1000.txt
+mpirun -np 50 ./bucket_average-mpi input_buckets_50000.txt output_buckets_mpi_50000.txt
+mpirun -np 50 ./bucket_average-mpi input_buckets_100000.txt output_buckets_mpi_100000.txt
+mpirun -np 50 ./bucket_average-mpi input_buckets_150000.txt output_buckets_mpi_150000.txt
 
-mpirun -np 100 ./bucket_average-mpi input_buckets_1000.txt output_buckets_serial_1000.txt
-mpirun -np 100 ./bucket_average-mpi input_buckets_50000.txt output_buckets_serial_50000.txt
-mpirun -np 100 ./bucket_average-mpi input_buckets_100000.txt output_buckets_serial_100000.txt
-mpirun -np 100 ./bucket_average-mpi input_buckets_150000.txt output_buckets_serial_150000.txt
+mpirun -np 100 ./bucket_average-mpi input_buckets_1000.txt output_buckets_mpi_1000.txt
+mpirun -np 100 ./bucket_average-mpi input_buckets_50000.txt output_buckets_mpi_50000.txt
+mpirun -np 100 ./bucket_average-mpi input_buckets_100000.txt output_buckets_mpi_100000.txt
+mpirun -np 100 ./bucket_average-mpi input_buckets_150000.txt output_buckets_mpi_150000.txt
 
-mpirun -np 200 ./bucket_average-mpi input_buckets_1000.txt output_buckets_serial_1000.txt
-mpirun -np 200 ./bucket_average-mpi input_buckets_50000.txt output_buckets_serial_50000.txt
-mpirun -np 200 ./bucket_average-mpi input_buckets_100000.txt output_buckets_serial_100000.txt
-mpirun -np 200 ./bucket_average-mpi input_buckets_150000.txt output_buckets_serial_150000.txt
+mpirun -np 200 ./bucket_average-mpi input_buckets_1000.txt output_buckets_mpi_1000.txt
+mpirun -np 200 ./bucket_average-mpi input_buckets_50000.txt output_buckets_mpi_50000.txt
+mpirun -np 200 ./bucket_average-mpi input_buckets_100000.txt output_buckets_mpi_100000.txt
+mpirun -np 200 ./bucket_average-mpi input_buckets_150000.txt output_buckets_mpi_150000.txt
