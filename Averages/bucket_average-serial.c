@@ -5,8 +5,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 int main(int argc, char* argv[]) {
+    clock_t start = clock();
+
     if (argc < 3) {
         fprintf(stderr, "Usage: %s input_file output_file\n", argv[0]);
         return 1;
@@ -94,5 +97,10 @@ int main(int argc, char* argv[]) {
     free(values);
     free(bucket_sums);
     free(bucket_counts);
+
+    clock_t end = clock();
+    double elapsed = (double) (end - start) / CLOCKS_PER_SEC;
+    printf("Time elapsed: %f seconds for bucket average serial input count: %d\n", elapsed, n);
+
     return 0;
 }

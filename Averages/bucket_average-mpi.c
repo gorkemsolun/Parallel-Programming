@@ -14,7 +14,11 @@ typedef struct {
 
 int main(int argc, char* argv[]) {
     int rank, size;
+    double start_time, end_time, local_time, max_time;
+
     MPI_Init(&argc, &argv);
+    start_time = MPI_Wtime();
+
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -147,6 +151,14 @@ int main(int argc, char* argv[]) {
     }
 
     MPI_Type_free(&MPI_PAIR);
+    end_time = MPI_Wtime();
+    local_time = end_time - start_time;
+
+    MPI_Reduce(&local_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    if (rank == 0) {
+        printf("Longest running process time for bucket average mpi: %f, input count: %d, process count: %d\n", max_time, n, size);
+    }
+
     MPI_Finalize();
     return 0;
 }
