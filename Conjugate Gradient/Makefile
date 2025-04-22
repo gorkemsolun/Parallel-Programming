@@ -14,7 +14,7 @@ serial: serial.c
 
 # Parallel executable
 parallel: parallel.c
-	$(MPICC) $(MPI_CFLAGS) -o parallel parallel.c
+	$(MPICC) $(MPI_CFLAGS) -o parallel parallel.c -lm
 
 # Clean up build artifacts
 .PHONY: clean all
