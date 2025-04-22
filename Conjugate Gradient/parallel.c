@@ -11,7 +11,7 @@
 #define MASTER 0
 #define DISTRIBUTE_TAG  100
 #define P_SEND_TAG 200
-#define TAG_XSEND 300
+#define RESULT_SEND_TAG 300
 
 int main(int argc, char* argv[]) {
     MPI_Init(&argc, &argv);
@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
         double* result = malloc(n * sizeof(double));
         for (int w = 1; w < world_size; ++w) {
             int offset = (w - 1) * rows_per_worker;
-            MPI_Recv(result + offset, rows_per_worker, MPI_DOUBLE, w, TAG_XSEND,
+            MPI_Recv(result + offset, rows_per_worker, MPI_DOUBLE, w, RESULT_SEND_TAG,
                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
             fprintf(stderr, "[Master] Received x[%d..%d] from rank %d\n",
@@ -86,11 +86,11 @@ int main(int argc, char* argv[]) {
         double t_end = MPI_Wtime();
         fprintf(stderr, "[Master] Total CG time: %.6f s\n", t_end - t_start);
 
-        FILE* fout = fopen("p_output.txt", "w");
+        FILE* output_file = fopen("p_output.txt", "w");
         for (int i = 0; i < n; ++i) {
-            fprintf(fout, "%.8f\n", x[i]);
+            fprintf(output_file, "%.8f\n", result[i]);
         }
-        fclose(fout);
+        fclose(output_file);
 
         free(A);
         free(b);
@@ -122,10 +122,21 @@ int main(int argc, char* argv[]) {
             p_loc[i] = r_loc[i];
         }
 
+        double r_dot_r_rho = 0;
+        for (int i = 0; i < rows_per_worker; ++i) {
+            r_dot_r_rho += r_loc[i] * r_loc[i];
+        }
+        // reduce r_dot_r_rho to all workers
+        double r_dot_new;
+        MPI_Allreduce(&r_dot_r_rho, &r_dot_new, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
+        r_dot_r_rho = r_dot_new;
+
+        fprintf(stderr, "[Rank %d] r_dot_r_rho=%.6e\n", world_rank, r_dot_new);
+
         // full p and r location
         double* p_full = malloc(n * sizeof(double));
 
-        double r_dot, p_dot_q, r_dot_new, alpha, beta;
+        double q_dot_q_kappa, p_dot_q_pi, alpha, beta;
         for (int iteration = 0; iteration < n; ++iteration) {
             int my_offset = worker_rank * rows_per_worker;
             for (int i = 0; i < rows_per_worker; ++i) {
@@ -172,55 +183,41 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "[Rank %d] iteration %d: SpMV done\n", world_rank, iteration);
 
             // local dot products
-            p_dot_q = 0;
-            r_dot = 0;
-            for (int i = 0;i < rows_per_worker; ++i) {
-                p_dot_q += p_loc[i] * q_loc[i];
-                r_dot += r_loc[i] * r_loc[i];
+            p_dot_q_pi = 0;
+            q_dot_q_kappa = 0;
+            for (int i = 0; i < rows_per_worker; ++i) {
+                p_dot_q_pi += p_loc[i] * q_loc[i];
+                q_dot_q_kappa += q_loc[i] * q_loc[i];
             }
 
-            double sum_pq, sum_rr;
-            MPI_Allreduce(&p_dot_q, &sum_pq, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
-            MPI_Allreduce(&r_dot, &sum_rr, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
+            double sum_p_dot_q_pi, sum_q_dot_q_kappa;
+            MPI_Allreduce(&p_dot_q_pi, &sum_p_dot_q_pi, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
+            MPI_Allreduce(&q_dot_q_kappa, &sum_q_dot_q_kappa, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
 
             fprintf(stderr, "[Rank %d] iteration %d: reduce pq=%.6e rr=%.6e\n",
-                world_rank, iteration, sum_pq, sum_rr);
+                world_rank, iteration, sum_p_dot_q_pi, sum_q_dot_q_kappa);
 
-            if (iteration == 0) {
-                alpha = sum_rr / sum_pq;
-            } else {
-                beta = sum_rr / r_dot;
-                alpha = sum_rr / sum_pq;
-            }
 
-            //─── 5) update x, r, p ───────────────────────────────────
-            for (int i = 0;i < rows_per_worker;i++) {
+            alpha = r_dot_r_rho / sum_p_dot_q_pi;
+            beta = alpha * sum_q_dot_q_kappa / sum_p_dot_q_pi - 1;
+
+            // update x, r, p, r_dot_r_rho
+            r_dot_r_rho = beta * r_dot_r_rho;
+            for (int i = 0; i < rows_per_worker; ++i) {
                 x_loc[i] += alpha * p_loc[i];
                 r_loc[i] -= alpha * q_loc[i];
+                p_loc[i] = r_loc[i] + beta * p_loc[i];
             }
-
-            // prepare for next iteration
-            r_dot_new = 0;
-            for (int i = 0;i < rows_per_worker;i++) r_dot_new += r_loc[i] * r_loc[i];
-            MPI_Allreduce(MPI_IN_PLACE, &r_dot_new, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
 
             if (sqrt(r_dot_new) < 1e-8) {
                 if (worker_rank == 0) fprintf(stderr, "[Rank %d] Converged at iteration %d\n", world_rank, iteration);
                 break;
             }
-
-            beta = r_dot_new / sum_rr;
-            for (int i = 0;i < rows_per_worker;i++) {
-                p_loc[i] = r_loc[i] + beta * p_loc[i];
-            }
-            r_dot = r_dot_new;
         }
 
-        //─── WORKER: send final x_loc back to master ───────────────────
         MPI_Send(x_loc, rows_per_worker, MPI_DOUBLE,
-            MASTER, TAG_XSEND, MPI_COMM_WORLD);
+            MASTER, RESULT_SEND_TAG, MPI_COMM_WORLD);
 
-        // cleanup
         free(A_loc);
         free(b_loc);
         free(x_loc);
