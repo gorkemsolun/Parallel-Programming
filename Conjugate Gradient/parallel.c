@@ -19,6 +19,16 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
+    if (argc != 2) {
+        if (world_rank == MASTER) {
+            fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
+
+        }
+        MPI_Finalize();
+        return EXIT_FAILURE;
+    }
+    const char* input_file_name = argv[1];
+
     if (world_size < 2) {
         if (world_rank == MASTER) {
             fprintf(stderr, "Need >=2 MPI ranks\n");
@@ -37,7 +47,7 @@ int main(int argc, char* argv[]) {
     double* A = NULL, * b = NULL;
 
     if (world_rank == MASTER) {
-        FILE* input_file = fopen("input.txt", "r");
+        FILE* input_file = fopen(input_file_name, "r");
         if (!input_file) {
             perror("fopen");
             MPI_Abort(MPI_COMM_WORLD, 1);
@@ -71,7 +81,12 @@ int main(int argc, char* argv[]) {
                 offset, offset + rows_per_worker - 1, w);
         }
 
+        MPI_Barrier(MPI_COMM_WORLD);
         double t_start = MPI_Wtime();
+
+        MPI_Barrier(MPI_COMM_WORLD);
+        double t_end = MPI_Wtime();
+        fprintf(stderr, "[Master] Time after the initial distribution phase and before the final reduction of the output vector: %.6f s\n", t_end - t_start);
 
         double* result = malloc(n * sizeof(double));
         for (int w = 1; w < world_size; ++w) {
@@ -82,9 +97,6 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "[Master] Received x[%d..%d] from rank %d\n",
                 offset, offset + rows_per_worker - 1, w);
         }
-
-        double t_end = MPI_Wtime();
-        fprintf(stderr, "[Master] Total CG time: %.6f s\n", t_end - t_start);
 
         FILE* output_file = fopen("p_output.txt", "w");
         for (int i = 0; i < n; ++i) {
@@ -106,6 +118,8 @@ int main(int argc, char* argv[]) {
         MPI_Recv(b_loc, rows_per_worker, MPI_DOUBLE, MASTER, DISTRIBUTE_TAG,
             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         fprintf(stderr, "[Rank %d] Got %d×%d block\n", world_rank, rows_per_worker, n);
+
+        MPI_Barrier(MPI_COMM_WORLD);
 
         int worker_rank, worker_size;
         MPI_Comm_rank(worker_comm, &worker_rank);
@@ -214,6 +228,8 @@ int main(int argc, char* argv[]) {
                 break;
             }
         }
+
+        MPI_Barrier(MPI_COMM_WORLD);
 
         MPI_Send(x_loc, rows_per_worker, MPI_DOUBLE,
             MASTER, RESULT_SEND_TAG, MPI_COMM_WORLD);

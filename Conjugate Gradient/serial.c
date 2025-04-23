@@ -9,42 +9,30 @@
 
 
 int main(int argc, char* argv[]) {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <matrix_file> <vector_file>\n", argv[0]);
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <matrix_file>\n", argv[0]);
         return EXIT_FAILURE;
     }
 
     const char* matrixFile = argv[1];
-    const char* vecfile = argv[2];
 
-    FILE* fileA = fopen(matrixFile, "r");
-    if (!fileA) {
+    FILE* file = fopen(matrixFile, "r");
+    if (!file) {
         perror("Error opening matrix file");
-        return EXIT_FAILURE;
-    }
-    FILE* fileb = fopen(vecfile, "r");
-    if (!fileb) {
-        perror("Error opening vector file");
-        fclose(fileA);
         return EXIT_FAILURE;
     }
 
     int N;
     // First value: dimension
-    if (fscanf(fileA, "%d", &N) != 1) {
+    if (fscanf(file, "%d", &N) != 1) {
         fprintf(stderr, "Failed to read matrix dimension\n");
-        return EXIT_FAILURE;
-    }
-    int Nb;
-    if (fscanf(fileb, "%d", &Nb) != 1 || Nb != N) {
-        fprintf(stderr, "Vector dimension does not match or failed to read\n");
         return EXIT_FAILURE;
     }
 
     // Allocate arrays
     double* A = malloc(N * N * sizeof(double));
     double* b = malloc(N * sizeof(double));
-    double* x = calloc(N, sizeof(double));  // Initial guess x=0
+    double* x = calloc(N, sizeof(double));  // x=0
     double* r = malloc(N * sizeof(double));
     double* p = malloc(N * sizeof(double));
     double* Ap = malloc(N * sizeof(double));
@@ -55,24 +43,21 @@ int main(int argc, char* argv[]) {
 
     // Read matrix entries (row-major)
     for (int i = 0; i < N * N; ++i) {
-        if (fscanf(fileA, "%lf", &A[i]) != 1) {
+        if (fscanf(file, "%lf", &A[i]) != 1) {
             fprintf(stderr, "Failed to read A[%d]\n", i);
             return EXIT_FAILURE;
         }
     }
-    fclose(fileA);
 
     // Read vector b
     for (int i = 0; i < N; ++i) {
-        if (fscanf(fileb, "%lf", &b[i]) != 1) {
+        if (fscanf(file, "%lf", &b[i]) != 1) {
             fprintf(stderr, "Failed to read b[%d]\n", i);
             return EXIT_FAILURE;
         }
     }
-    fclose(fileb);
+    fclose(file);
 
-    // Conjugate Gradient variables
-    double epsilon = 1e-6;
     double alpha, beta, rho;
 
     // r = b - A*x (x=0 to r=b)
@@ -118,7 +103,7 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < N; ++i) {
             rhoNew += r[i] * r[i];
         }
-        if (sqrt(rhoNew) < epsilon) {
+        if (sqrt(rhoNew) < 1e-6) {
             break;
         }
 
@@ -134,15 +119,15 @@ int main(int argc, char* argv[]) {
     double elapsed = (double) (t_end - t_start) / CLOCKS_PER_SEC;
     fprintf(stderr, "Elapsed time: %f seconds\n", elapsed);
 
-    FILE* fx = fopen("s_output.txt", "w");
-    if (!fx) {
+    FILE* outputFile = fopen("s_output.txt", "w");
+    if (!outputFile) {
         perror("Error opening output file");
         return EXIT_FAILURE;
     }
     for (int i = 0; i < N; ++i) {
-        fprintf(fx, "%lf\n", x[i]);
+        fprintf(outputFile, "%lf\n", x[i]);
     }
-    fclose(fx);
+    fclose(outputFile);
 
     free(A);
     free(b);
