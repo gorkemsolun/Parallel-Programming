@@ -104,6 +104,9 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < n; ++i) {
             fprintf(output_file, "%.8f\n", result[i]);
         }
+
+        fprintf(output_file, "Elapsed time: %.6f s\n", t_end - t_start);
+
         fclose(output_file);
 
         free(A);

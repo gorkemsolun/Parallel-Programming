@@ -127,6 +127,9 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < N; ++i) {
         fprintf(outputFile, "%lf\n", x[i]);
     }
+
+    fprintf(outputFile, "Elapsed time: %f seconds\n", elapsed);
+
     fclose(outputFile);
 
     free(A);
