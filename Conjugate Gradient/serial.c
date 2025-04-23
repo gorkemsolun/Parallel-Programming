@@ -9,23 +9,23 @@
 
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <matrix_file>\n", argv[0]);
+    if (argc < 2 || argc > 3) {
+        fprintf(stderr, "Usage: %s <input_file> [output_file]\n", argv[0]);
         return EXIT_FAILURE;
     }
 
-    const char* matrixFile = argv[1];
-
-    FILE* file = fopen(matrixFile, "r");
+    const char* input_file_name = argv[1];
+    const char* outputFileName = (argc == 3) ? argv[2] : "s_output.txt";
+    FILE* file = fopen(input_file_name, "r");
     if (!file) {
-        perror("Error opening matrix file");
+        perror("Error opening input file");
         return EXIT_FAILURE;
     }
 
     int N;
     // First value: dimension
     if (fscanf(file, "%d", &N) != 1) {
-        fprintf(stderr, "Failed to read matrix dimension\n");
+        fprintf(stderr, "Failed to read dimension\n");
         return EXIT_FAILURE;
     }
 
@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
     double elapsed = (double) (t_end - t_start) / CLOCKS_PER_SEC;
     fprintf(stderr, "Elapsed time: %f seconds\n", elapsed);
 
-    FILE* outputFile = fopen("s_output.txt", "w");
+    FILE* outputFile = fopen(outputFileName, "w");
     if (!outputFile) {
         perror("Error opening output file");
         return EXIT_FAILURE;

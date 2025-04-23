@@ -19,15 +19,17 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-    if (argc != 2) {
+    if (argc < 2 || argc > 3) {
         if (world_rank == MASTER) {
-            fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
+            fprintf(stderr, "Usage: %s <input_file> [output_file]\n", argv[0]);
 
         }
         MPI_Finalize();
         return EXIT_FAILURE;
+
     }
     const char* input_file_name = argv[1];
+    const char* output_file_name = (argc == 3) ? argv[2] : "p_output.txt";
 
     if (world_size < 2) {
         if (world_rank == MASTER) {
@@ -98,7 +100,7 @@ int main(int argc, char* argv[]) {
                 offset, offset + rows_per_worker - 1, w);
         }
 
-        FILE* output_file = fopen("p_output.txt", "w");
+        FILE* output_file = fopen(output_file_name, "w");
         for (int i = 0; i < n; ++i) {
             fprintf(output_file, "%.8f\n", result[i]);
         }
