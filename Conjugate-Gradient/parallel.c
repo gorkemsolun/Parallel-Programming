@@ -56,6 +56,13 @@ int main(int argc, char* argv[]) {
         }
         fscanf(input_file, "%d", &n);
 
+        // Check if n is divisible by world_size - 1
+        if (n % (world_size - 1) != 0) {
+            fprintf(stderr, "Error: n (%d) is not divisible by world_size - 1 (%d)\n", n, world_size - 1);
+            fclose(input_file);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
         // Assuming n is divisible by world_size - 1
         rows_per_worker = n / (world_size - 1);
         A = malloc(n * n * sizeof(double));
@@ -77,10 +84,6 @@ int main(int argc, char* argv[]) {
             int offset = (w - 1) * rows_per_worker;
             MPI_Send(A + offset * n, rows_per_worker * n, MPI_DOUBLE, w, DISTRIBUTE_TAG, MPI_COMM_WORLD);
             MPI_Send(b + offset, rows_per_worker, MPI_DOUBLE, w, DISTRIBUTE_TAG, MPI_COMM_WORLD);
-
-            fprintf(stderr,
-                "[Master] Sent rows %d..%d to rank %d\n",
-                offset, offset + rows_per_worker - 1, w);
         }
 
         MPI_Barrier(MPI_COMM_WORLD);
@@ -88,16 +91,12 @@ int main(int argc, char* argv[]) {
 
         MPI_Barrier(MPI_COMM_WORLD);
         double t_end = MPI_Wtime();
-        fprintf(stderr, "[Master] Time after the initial distribution phase and before the final reduction of the output vector: %.6f s\n", t_end - t_start);
 
         double* result = malloc(n * sizeof(double));
         for (int w = 1; w < world_size; ++w) {
             int offset = (w - 1) * rows_per_worker;
             MPI_Recv(result + offset, rows_per_worker, MPI_DOUBLE, w, RESULT_SEND_TAG,
                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-            fprintf(stderr, "[Master] Received x[%d..%d] from rank %d\n",
-                offset, offset + rows_per_worker - 1, w);
         }
 
         FILE* output_file = fopen(output_file_name, "w");
@@ -122,7 +121,6 @@ int main(int argc, char* argv[]) {
             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         MPI_Recv(b_loc, rows_per_worker, MPI_DOUBLE, MASTER, DISTRIBUTE_TAG,
             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        fprintf(stderr, "[Rank %d] Got %d×%d block\n", world_rank, rows_per_worker, n);
 
         MPI_Barrier(MPI_COMM_WORLD);
 
@@ -149,8 +147,6 @@ int main(int argc, char* argv[]) {
         double r_dot_new;
         MPI_Allreduce(&r_dot_r_rho, &r_dot_new, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
         r_dot_r_rho = r_dot_new;
-
-        fprintf(stderr, "[Rank %d] r_dot_r_rho=%.6e\n", world_rank, r_dot_new);
 
         // full p and r location
         double* p_full = malloc(n * sizeof(double));
@@ -186,10 +182,11 @@ int main(int argc, char* argv[]) {
                     &requests[request_counter++]);
             }
 
-            MPI_Waitall(request_counter, requests, MPI_STATUSES_IGNORE);
+            if (request_counter > 0) {
+                MPI_Waitall(request_counter, requests, MPI_STATUSES_IGNORE);
+            }
             free(requests);
 
-            fprintf(stderr, "[Rank %d] iteration %d: p exchange done\n", world_rank, iteration);
 
             // local SpMV q_loc = A_loc * p_full
             for (int i = 0; i < rows_per_worker; ++i) {
@@ -199,7 +196,6 @@ int main(int argc, char* argv[]) {
                 }
                 q_loc[i] = sum;
             }
-            fprintf(stderr, "[Rank %d] iteration %d: SpMV done\n", world_rank, iteration);
 
             // local dot products
             p_dot_q_pi = 0;
@@ -212,9 +208,6 @@ int main(int argc, char* argv[]) {
             double sum_p_dot_q_pi, sum_q_dot_q_kappa;
             MPI_Allreduce(&p_dot_q_pi, &sum_p_dot_q_pi, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
             MPI_Allreduce(&q_dot_q_kappa, &sum_q_dot_q_kappa, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
-
-            fprintf(stderr, "[Rank %d] iteration %d: reduce pq=%.6e rr=%.6e\n",
-                world_rank, iteration, sum_p_dot_q_pi, sum_q_dot_q_kappa);
 
 
             alpha = r_dot_r_rho / sum_p_dot_q_pi;
@@ -229,7 +222,6 @@ int main(int argc, char* argv[]) {
             }
 
             if (sqrt(r_dot_new) < 1e-8) {
-                if (worker_rank == 0) fprintf(stderr, "[Rank %d] Converged at iteration %d\n", world_rank, iteration);
                 break;
             }
         }
