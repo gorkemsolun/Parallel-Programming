@@ -139,19 +139,19 @@ int main(int argc, char* argv[]) {
             p_loc[i] = r_loc[i];
         }
 
-        double r_dot_r_rho = 0;
+        /* double r_dot_r_rho = 0;
         for (int i = 0; i < rows_per_worker; ++i) {
             r_dot_r_rho += r_loc[i] * r_loc[i];
         }
         // reduce r_dot_r_rho to all workers
         double r_dot_new;
         MPI_Allreduce(&r_dot_r_rho, &r_dot_new, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
-        r_dot_r_rho = r_dot_new;
+        r_dot_r_rho = r_dot_new; */
 
         // full p and r location
         double* p_full = malloc(n * sizeof(double));
 
-        double q_dot_q_kappa, p_dot_q_pi, alpha, beta;
+        double r_dot, p_dot_q, r_dot_new, alpha, beta;
         for (int iteration = 0; iteration < n; ++iteration) {
             int my_offset = worker_rank * rows_per_worker;
             for (int i = 0; i < rows_per_worker; ++i) {
@@ -198,32 +198,46 @@ int main(int argc, char* argv[]) {
             }
 
             // local dot products
-            p_dot_q_pi = 0;
-            q_dot_q_kappa = 0;
-            for (int i = 0; i < rows_per_worker; ++i) {
-                p_dot_q_pi += p_loc[i] * q_loc[i];
-                q_dot_q_kappa += q_loc[i] * q_loc[i];
+            p_dot_q = 0;
+            r_dot = 0;
+            for (int i = 0;i < rows_per_worker; ++i) {
+                p_dot_q += p_loc[i] * q_loc[i];
+                r_dot += r_loc[i] * r_loc[i];
             }
 
-            double sum_p_dot_q_pi, sum_q_dot_q_kappa;
-            MPI_Allreduce(&p_dot_q_pi, &sum_p_dot_q_pi, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
-            MPI_Allreduce(&q_dot_q_kappa, &sum_q_dot_q_kappa, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
+            double sum_pq, sum_rr;
+            MPI_Allreduce(&p_dot_q, &sum_pq, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
+            MPI_Allreduce(&r_dot, &sum_rr, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
 
 
-            alpha = r_dot_r_rho / sum_p_dot_q_pi;
-            beta = alpha * sum_q_dot_q_kappa / sum_p_dot_q_pi - 1;
+            if (iteration == 0) {
+                alpha = sum_rr / sum_pq;
+            } else {
+                beta = sum_rr / r_dot;
+                alpha = sum_rr / sum_pq;
+            }
 
-            // update x, r, p, r_dot_r_rho
-            r_dot_r_rho = beta * r_dot_r_rho;
+            // update
             for (int i = 0; i < rows_per_worker; ++i) {
                 x_loc[i] += alpha * p_loc[i];
                 r_loc[i] -= alpha * q_loc[i];
-                p_loc[i] = r_loc[i] + beta * p_loc[i];
             }
+
+            r_dot_new = 0;
+            for (int i = 0; i < rows_per_worker; ++i) {
+                r_dot_new += r_loc[i] * r_loc[i];
+            }
+            MPI_Allreduce(MPI_IN_PLACE, &r_dot_new, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
 
             if (sqrt(r_dot_new) < 1e-8) {
                 break;
             }
+
+            beta = r_dot_new / sum_rr;
+            for (int i = 0;i < rows_per_worker; ++i) {
+                p_loc[i] = r_loc[i] + beta * p_loc[i];
+            }
+            r_dot = r_dot_new;
         }
 
         MPI_Barrier(MPI_COMM_WORLD);
