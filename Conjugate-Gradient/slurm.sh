@@ -45,10 +45,18 @@ mpirun -np 65 ./parallel input_1024.txt output_1024_64.txt
 mpirun -np 129 ./parallel input_1024.txt output_1024_128.txt
 mpirun -np 257 ./parallel input_1024.txt output_1024_256.txt
 
-# Weak scaling 1
+# Weak scaling 1, row distribution is equal
 
 mpirun -np 17 ./parallel input_128.txt output_128_16.txt
 mpirun -np 33 ./parallel input_256.txt output_256_32.txt
 mpirun -np 65 ./parallel input_512.txt output_512_64.txt
 mpirun -np 129 ./parallel input_1024.txt output_1024_128.txt
 mpirun -np 257 ./parallel input_2048.txt output_2048_256.txt
+
+# Weak scaling 2, element distribution is equal
+
+mpirun -np 5 ./parallel input_128.txt output_128_4.txt 
+mpirun -np 17 ./parallel input_256.txt output_256_16.txt
+mpirun -np 65 ./parallel input_512.txt output_512_64.txt
+mpirun -np 257 ./parallel input_1024.txt output_1024_256.txt
+# mpirun -np 1025 ./parallel input_2048.txt output_2048_1024.txt

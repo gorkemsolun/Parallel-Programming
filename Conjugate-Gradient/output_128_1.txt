@@ -126,4 +126,4 @@
 0.001875
 0.004900
 -0.000246
-Elapsed time: 0.000053 seconds
+Elapsed time: 0.000051 seconds
