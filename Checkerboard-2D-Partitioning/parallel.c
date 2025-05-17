@@ -10,12 +10,13 @@
 #include <string.h>
 
 #define MASTER 0
-#define DISTRIBUTE_TAG 100
+#define DISTRIBUTE_TAG_n 100
 #define DISTRIBUTE_TAG_A 101
 #define DISTRIBUTE_TAG_B 102
-#define P_SEND_TAG 200
-#define P_RECV_TAG 201
-#define RESULT_SEND_TAG 300
+#define P_DISTRIBUTE_TAG 200
+#define Q_DISTRIBUTE_TAG 201
+#define Q_TRANSPOSE_TAG 202
+#define RESULT_TAG 300
 
 int main(int argc, char *argv[])
 {
@@ -46,23 +47,27 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    int p = world_size - 1;
-    int sqrt_p = (int)sqrt(p);
+    int worker_size = world_size - 1;
+    int worker_size_sqrt = (int)sqrt(worker_size);
+    int worker_rank;
 
-    // Create worker communicator first
+    // Create worker communicator
     MPI_Comm worker_comm;
     MPI_Comm_split(MPI_COMM_WORLD,
                    world_rank == MASTER ? MPI_UNDEFINED : 1,
                    world_rank,
                    &worker_comm);
 
-    // Only create Cartesian communicator for worker processes
-    MPI_Comm cart_comm = MPI_COMM_NULL, row_comm = MPI_COMM_NULL, col_comm = MPI_COMM_NULL;
-
-    int cart_rank = -1, coords[2] = {-1, -1};
+    if (world_rank != MASTER)
+    {
+        MPI_Comm_rank(worker_comm, &worker_rank);
+        MPI_Comm_size(worker_comm, &worker_size);
+    }
 
     int n;
     double *A = NULL, *b = NULL;
+
+    int block_length, block_length_separated, block_size, destination_rank;
 
     if (world_rank == MASTER)
     {
@@ -75,16 +80,23 @@ int main(int argc, char *argv[])
 
         fscanf(input_file, "%d", &n);
 
-        if (n % sqrt_p != 0)
+        if (n % worker_size_sqrt != 0)
         {
-            fprintf(stderr, "Error: n (%d) is not divisible by sqrt_p (%d)\n", n, sqrt_p);
+            fprintf(stderr, "Error: n (%d) is not divisible by worker_size_sqrt (%d)\n", n, worker_size_sqrt);
+            fclose(input_file);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        if (n % worker_size != 0)
+        {
+            fprintf(stderr, "Error: n (%d) is not divisible by worker_size (%d)\n", n, worker_size);
             fclose(input_file);
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
         for (int w = 1; w < world_size; ++w)
         {
-            MPI_Send(&n, 1, MPI_INT, w, DISTRIBUTE_TAG, MPI_COMM_WORLD);
+            MPI_Send(&n, 1, MPI_INT, w, DISTRIBUTE_TAG_n, MPI_COMM_WORLD);
         }
 
         A = malloc(n * n * sizeof(double));
@@ -102,17 +114,15 @@ int main(int argc, char *argv[])
         }
         fclose(input_file);
 
-        int block_length = n / sqrt_p;
-        int block_size = block_length * block_length;
+        block_length = n / worker_size_sqrt;
+        block_length_separated = n / worker_size;
+        block_size = block_length * block_length;
 
-        printf("block_length: %d, block_size: %d\n", block_length, block_size);
-
-        for (int i = 0; i < sqrt_p; ++i)
+        for (int i = 0; i < worker_size_sqrt; ++i)
         {
-            for (int j = 0; j < sqrt_p; ++j)
+            for (int j = 0; j < worker_size_sqrt; ++j)
             {
-                // Calculate destination rank in worker communicator
-                int destination_rank = i * sqrt_p + j + 1; // +1 because rank 0 is master
+                destination_rank = i * worker_size_sqrt + j + 1; // +1 because rank 0 is master
 
                 // Send A_ij to the destination rank
                 double *temp_A = malloc(block_size * sizeof(double));
@@ -124,7 +134,7 @@ int main(int argc, char *argv[])
                 free(temp_A);
 
                 // Send b_ji to the destination rank
-                MPI_Send(b + j * block_length + i, block_length / sqrt_p, MPI_DOUBLE, destination_rank, DISTRIBUTE_TAG_B, MPI_COMM_WORLD);
+                MPI_Send(b + j * block_length + i * block_length_separated, block_length_separated, MPI_DOUBLE, destination_rank, DISTRIBUTE_TAG_B, MPI_COMM_WORLD);
             }
         }
         // P_ij knows A_ij and b_ji, P_αβ knows A_αβ and b_βα
@@ -136,11 +146,11 @@ int main(int argc, char *argv[])
         double t_end = MPI_Wtime();
 
         double *result = malloc(n * sizeof(double));
-        for (int i = 0; i < sqrt_p; ++i)
+        for (int i = 0; i < worker_size_sqrt; ++i)
         {
-            for (int j = 0; j < sqrt_p; ++j)
+            for (int j = 0; j < worker_size_sqrt; ++j)
             {
-                MPI_Recv(result + i * block_length + j, block_length, MPI_DOUBLE, i * sqrt_p + j + 1, RESULT_SEND_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(result + i * block_length_separated + j * block_length, block_length_separated, MPI_DOUBLE, i * worker_size_sqrt + j + 1, RESULT_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             }
         }
 
@@ -160,210 +170,199 @@ int main(int argc, char *argv[])
     }
     else
     {
-        printf("Worker %d: Starting initialization\n", world_rank);
+        MPI_Recv(&n, 1, MPI_INT, MASTER, DISTRIBUTE_TAG_n, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        /* printf("worker %d n: %d\n", worker_rank, n); */
 
-        int dims[2] = {sqrt_p, sqrt_p};
-        int periods[2] = {0, 0};
-        printf("Worker %d: About to create cart_comm\n", world_rank);
-        MPI_Cart_create(worker_comm, 2, dims, periods, 1, &cart_comm);
-        printf("Worker %d: Created cart_comm\n", world_rank);
-
-        MPI_Comm_rank(cart_comm, &cart_rank);
-        MPI_Cart_coords(cart_comm, cart_rank, 2, coords);
-        printf("Worker %d: Got cart_rank=%d, coords=[%d,%d]\n", world_rank, cart_rank, coords[0], coords[1]);
-
-        MPI_Comm_split(cart_comm, coords[0], coords[1], &row_comm);
-        MPI_Comm_split(cart_comm, coords[1], coords[0], &col_comm);
-        printf("Worker %d: Created row and col comms\n", world_rank);
-
-        MPI_Recv(&n, 1, MPI_INT, MASTER, DISTRIBUTE_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        printf("Worker %d: Received n=%d\n", world_rank, n);
-
-        int block_length = n / sqrt_p;
-        int block_size = block_length * block_length;
-        printf("Worker %d: block_length=%d, block_size=%d\n", world_rank, block_length, block_size);
+        block_length = n / worker_size_sqrt;
+        block_length_separated = n / worker_size;
+        block_size = block_length * block_length;
 
         double *A_ij = malloc(block_size * sizeof(double));
-        printf("Worker %d: Allocated A_ij\n", world_rank);
         MPI_Recv(A_ij, block_size, MPI_DOUBLE, MASTER, DISTRIBUTE_TAG_A, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        printf("Worker %d: Received A_ij\n", world_rank);
 
-        double *b_ji = malloc(block_length / sqrt_p * sizeof(double));
-        printf("Worker %d: Allocated b_ji\n", world_rank);
-        MPI_Recv(b_ji, block_length / sqrt_p, MPI_DOUBLE, MASTER, DISTRIBUTE_TAG_B, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        printf("Worker %d: Received b_ji\n", world_rank);
+        double *b_ji = malloc(block_length_separated * sizeof(double));
+        MPI_Recv(b_ji, block_length_separated, MPI_DOUBLE, MASTER, DISTRIBUTE_TAG_B, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-        for (int i = 0; i < block_length; ++i)
-        {
-            for (int j = 0; j < block_length; ++j)
-            {
-                printf("Worker %d: A_ij[%d][%d] = %f\n", world_rank, i, j, A_ij[i * block_length + j]);
-            }
-        }
-        for (int i = 0; i < block_length / sqrt_p; ++i)
-        {
-            printf("Worker %d: b_ji[%d] = %f\n", world_rank, i, b_ji[i]);
-        }
+        /* printf("worker %d A_ij[0]: %f\n", worker_rank, A_ij[0]);
+        printf("worker %d A_ij[1]: %f\n", worker_rank, A_ij[1]);
+        printf("worker %d b_ji[0]: %f\n", worker_rank, b_ji[0]);
+        printf("worker %d b_ji[1]: %f\n", worker_rank, b_ji[1]); */
 
         MPI_Barrier(MPI_COMM_WORLD);
 
-        printf("Worker %d: coords: %d %d\n", world_rank, coords[0], coords[1]);
+        double *x_local = calloc(block_length_separated, sizeof(double));
+        double *r_local = malloc(block_length_separated * sizeof(double));
+        double *p_local = malloc(block_length_separated * sizeof(double));
+        double *q_local = malloc(block_length_separated * sizeof(double));
+        double *q_local_transposed = malloc(block_length_separated * sizeof(double));
+        double *p_block = malloc(block_length * sizeof(double));
+        double *q_block = malloc(block_length * sizeof(double));
+        double *q_block_folded = malloc(block_length * sizeof(double));
 
-        int worker_rank, worker_size;
-        MPI_Comm_rank(worker_comm, &worker_rank);
-        MPI_Comm_size(worker_comm, &worker_size);
-
-        double *x_loc = calloc(block_length, sizeof(double));
-        double *r_loc = malloc(block_length * sizeof(double));
-        double *p_loc = malloc(block_length * sizeof(double));
-        double *q_loc = malloc(block_length * sizeof(double));
-
-        double *b_j = malloc(block_length * sizeof(double));
-
-        // Perform ring AABC to get b_j for all i by sending requests to same column peers
-        MPI_Request *requests = malloc(2 * (sqrt_p - 1) * sizeof(MPI_Request));
-        int request_counter = 0;
-
-        // First post all receives
-        for (int i = 0; i < sqrt_p; ++i)
+        for (int i = 0; i < block_length_separated; ++i)
         {
-            if (i == coords[0])
+            r_local[i] = b_ji[i];
+            p_local[i] = r_local[i];
+        }
+
+        free(b_ji);
+
+        double alpha, beta;
+        double r_dot_r, r_dot_r_local = 0;
+        double p_dot_q, q_dot_q, p_dot_q_local, q_dot_q_local;
+        // double *p_dot_q_q_dot_q = malloc(2 * sizeof(double)), *p_dot_q_q_dot_q_local = malloc(2 * sizeof(double));
+
+        for (int i = 0; i < block_length_separated; ++i)
+        {
+            r_dot_r_local += r_local[i] * r_local[i];
+        }
+        MPI_Allreduce(&r_dot_r_local, &r_dot_r, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
+
+        while (r_dot_r > 1e-12)
+        {
+            int worker_column_index = worker_rank % worker_size_sqrt;
+            int worker_row_index = worker_rank / worker_size_sqrt;
+
+            for (int i = 0; i < worker_size_sqrt; ++i)
             {
-                continue;
+                destination_rank = i * worker_size_sqrt + worker_column_index;
+                int block_offset = i * block_length_separated;
+                if (i == worker_row_index)
+                {
+                    memcpy(p_block + block_offset, p_local, block_length_separated * sizeof(double));
+                }
+                else
+                {
+                    MPI_Sendrecv(p_local, block_length_separated, MPI_DOUBLE, destination_rank, P_DISTRIBUTE_TAG, p_block + block_offset, block_length_separated, MPI_DOUBLE, destination_rank, P_DISTRIBUTE_TAG, worker_comm, MPI_STATUS_IGNORE);
+                }
             }
 
-            int source_rank = i * sqrt_p + coords[1] + 1;
-            MPI_Irecv(b_j + i * block_length / sqrt_p, block_length / sqrt_p, MPI_DOUBLE,
-                      source_rank, P_SEND_TAG, MPI_COMM_WORLD, &requests[request_counter++]);
-            printf("Worker %d: Posted receive from worker %d\n", world_rank, source_rank);
-        }
-        // Then post all sends
-        for (int i = 0; i < sqrt_p; ++i)
-        {
-            if (i == coords[0])
-            {
-                continue;
-            }
+            /* printf("worker %d p_block[0]: %f\n", worker_rank, p_block[0]);
+            printf("worker %d p_block[1]: %f\n", worker_rank, p_block[1]);
+            printf("worker %d p_block[2]: %f\n", worker_rank, p_block[2]);
+            printf("worker %d p_block[3]: %f\n", worker_rank, p_block[3]); */
 
-            int destination_rank = i * sqrt_p + coords[1] + 1;
-            MPI_Isend(b_ji, block_length / sqrt_p, MPI_DOUBLE,
-                      destination_rank, P_SEND_TAG, MPI_COMM_WORLD, &requests[request_counter++]);
-            printf("Worker %d: Posted send to worker %d\n", world_rank, destination_rank);
-        }
-
-        if (request_counter > 0)
-        {
-            printf("Worker %d: Waiting for %d communications to complete\n", world_rank, request_counter);
-            MPI_Waitall(request_counter, requests, MPI_STATUSES_IGNORE);
-        }
-        free(requests);
-        printf("Worker %d: All communications completed\n", world_rank);
-
-        // Copy local b_ji to b_j
-        memcpy(b_j + coords[0] * block_length / sqrt_p, b_ji, block_length / sqrt_p * sizeof(double));
-
-        // Print b_j
-        for (int i = 0; i < block_length; ++i)
-        {
-            printf("Worker %d: b_j[%d] = %f\n", world_rank, i, b_j[i]);
-        }
-
-        // initial r=b, p=r
-        for (int i = 0; i < block_length; ++i)
-        {
-            r_loc[i] = b_j[i];
-            p_loc[i] = r_loc[i];
-        }
-
-        double r_dot, p_dot_q, r_dot_new, alpha, beta;
-        for (int iteration = 0; iteration < n; ++iteration)
-        {   
-
-            // local SpMV q_loc = A_loc * p_loc
             for (int i = 0; i < block_length; ++i)
             {
                 double sum = 0;
                 for (int j = 0; j < block_length; ++j)
                 {
-                    sum += A_ij[i * block_length + j] * p_loc[j];
+                    sum += A_ij[i * block_length + j] * p_block[j];
                 }
-                q_loc[i] = sum;
+                q_block[i] = sum;
             }
 
-            // print q_loc
-            for (int i = 0; i < block_length; ++i)
+            /* printf("worker %d q_block[0]: %f\n", worker_rank, q_block[0]);
+            printf("worker %d q_block[1]: %f\n", worker_rank, q_block[1]);
+            printf("worker %d q_block[2]: %f\n", worker_rank, q_block[2]);
+            printf("worker %d q_block[3]: %f\n", worker_rank, q_block[3]); */
+
+            memcpy(q_block_folded, q_block, block_length * sizeof(double));
+            int worker_row_start_rank = worker_row_index * worker_size_sqrt;
+            for (int j = 0; j < worker_size_sqrt; ++j)
             {
-                printf("Iteration %d: Worker %d: q_loc[%d] = %f\n", iteration, world_rank, i, q_loc[i]);
+                if (j == worker_column_index)
+                {
+                    continue;
+                }
+                destination_rank = worker_row_start_rank + j;
+                double *temp_q_block = malloc(block_length * sizeof(double));
+                MPI_Sendrecv(q_block, block_length, MPI_DOUBLE, destination_rank, Q_DISTRIBUTE_TAG, temp_q_block, block_length, MPI_DOUBLE, destination_rank, Q_DISTRIBUTE_TAG, worker_comm, MPI_STATUS_IGNORE);
+                for (int i = 0; i < block_length; ++i)
+                {
+                    q_block_folded[i] += temp_q_block[i];
+                }
+                free(temp_q_block);
             }
 
-            // local dot products
-            p_dot_q = 0;
-            r_dot = 0;
-            for (int i = 0; i < block_length; ++i)
+            /* printf("worker %d q_block_folded[0]: %f\n", worker_rank, q_block_folded[0]);
+            printf("worker %d q_block_folded[1]: %f\n", worker_rank, q_block_folded[1]);
+            printf("worker %d q_block_folded[2]: %f\n", worker_rank, q_block_folded[2]);
+            printf("worker %d q_block_folded[3]: %f\n", worker_rank, q_block_folded[3]); */
+
+            // q_local = q_block_folded[worker_column_index]
+            memcpy(q_local, q_block_folded + worker_column_index * block_length_separated, block_length_separated * sizeof(double));
+
+            /* printf("worker %d q_local[0]: %f\n", worker_rank, q_local[0]);
+            printf("worker %d q_local[1]: %f\n", worker_rank, q_local[1]); */
+
+            // Transpose q_locals
+            destination_rank = worker_column_index * worker_size_sqrt + worker_row_index;
+            MPI_Sendrecv(q_local, block_length_separated, MPI_DOUBLE, destination_rank, Q_TRANSPOSE_TAG, q_local_transposed, block_length_separated, MPI_DOUBLE, destination_rank, Q_TRANSPOSE_TAG, worker_comm, MPI_STATUS_IGNORE);
+
+            /* printf("worker %d q_local_transposed[0]: %f\n", worker_rank, q_local_transposed[0]);
+            printf("worker %d q_local_transposed[1]: %f\n", worker_rank, q_local_transposed[1]); */
+
+            p_dot_q_local = 0;
+            for (int i = 0; i < block_length_separated; ++i)
             {
-                p_dot_q += p_loc[i] * q_loc[i];
-                r_dot += r_loc[i] * r_loc[i];
+                p_dot_q_local += p_local[i] * q_local_transposed[i];
             }
+            MPI_Allreduce(&p_dot_q_local, &p_dot_q, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
 
-            printf("Iteration %d: Worker %d: local p_dot_q: %f, local r_dot: %f\n", iteration, world_rank, p_dot_q, r_dot);
+            alpha = r_dot_r / p_dot_q;
 
-            double sum_pq, sum_rr;
-            MPI_Allreduce(&p_dot_q, &sum_pq, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
-            MPI_Allreduce(&r_dot, &sum_rr, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
-
-            printf("Iteration %d: Worker %d: sum_pq: %f, sum_rr: %f\n", iteration, world_rank, sum_pq, sum_rr);
-
-            if (iteration == 0)
+            for (int i = 0; i < block_length_separated; ++i)
             {
-                alpha = sum_rr / sum_pq;
-            }
-            else
-            {
-                beta = sum_rr / r_dot;
-                alpha = sum_rr / sum_pq;
+                r_local[i] -= alpha * q_local_transposed[i];
+                x_local[i] += alpha * p_local[i];
             }
 
-            // update
-            for (int i = 0; i < block_length; ++i)
+            r_dot_r_local = 0;
+            double new_r_dot_r = 0;
+            for (int i = 0; i < block_length_separated; ++i)
             {
-                x_loc[i] += alpha * p_loc[i];
-                r_loc[i] -= alpha * q_loc[i];
+                r_dot_r_local += r_local[i] * r_local[i];
+            }
+            MPI_Allreduce(&r_dot_r_local, &new_r_dot_r, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
+
+            beta = new_r_dot_r / r_dot_r;
+            r_dot_r = new_r_dot_r;
+            for (int i = 0; i < block_length_separated; ++i)
+            {
+                p_local[i] = r_local[i] + beta * p_local[i];
             }
 
-            r_dot_new = 0;
-            for (int i = 0; i < block_length; ++i)
-            {
-                r_dot_new += r_loc[i] * r_loc[i];
-            }
-            MPI_Allreduce(MPI_IN_PLACE, &r_dot_new, 1, MPI_DOUBLE, MPI_SUM, worker_comm);
+            /* printf("worker %d r_dot_r: %f\n", worker_rank, r_dot_r); */
 
-            printf("Iteration %d: Worker %d: r_dot_new: %f\n", iteration, world_rank, r_dot_new);
-
-            if (sqrt(r_dot_new) < 1e-8)
+            /* p_dot_q_q_dot_q_local[0] = 0;
+            p_dot_q_q_dot_q_local[1] = 0;
+            for (int i = 0; i < block_length_separated; ++i)
             {
-                break;
+                p_dot_q_q_dot_q_local[0] += p_local[i] * q_local[i];
+                p_dot_q_q_dot_q_local[1] += q_local[i] * q_local[i];
             }
+            MPI_Allreduce(p_dot_q_q_dot_q_local, p_dot_q_q_dot_q, 2, MPI_DOUBLE, MPI_SUM, worker_comm);
 
-            beta = r_dot_new / sum_rr;
-            for (int i = 0; i < block_length; ++i)
+             alpha = r_dot_r / p_dot_q_q_dot_q[0];
+            beta = alpha * (p_dot_q_q_dot_q[1] / p_dot_q_q_dot_q[0]) - 1;
+            r_dot_r = beta * r_dot_r;
+
+            for (int i = 0; i < block_length_separated; ++i)
             {
-                p_loc[i] = r_loc[i] + beta * p_loc[i];
-            }
-            r_dot = r_dot_new;
+                r_local[i] -= alpha * q_local[i];
+                x_local[i] += alpha * p_local[i];
+                p_local[i] = r_local[i] + beta * p_local[i];
+            } */
         }
 
         MPI_Barrier(MPI_COMM_WORLD);
 
-        // Beware the location of x_loc
-        MPI_Send(x_loc, block_length, MPI_DOUBLE,
-                 MASTER, RESULT_SEND_TAG, MPI_COMM_WORLD);
+        /* printf("worker %d x_local[0]: %f\n", worker_rank, x_local[0]);
+        printf("worker %d x_local[1]: %f\n", worker_rank, x_local[1]); */
+
+        // Beware the location of x_local
+        MPI_Send(x_local, block_length_separated, MPI_DOUBLE, MASTER, RESULT_TAG, MPI_COMM_WORLD);
 
         free(A_ij);
-        free(b_ji);
-        free(x_loc);
-        free(r_loc);
-        free(p_loc);
-        free(q_loc);
+        free(x_local);
+        free(r_local);
+        free(p_local);
+        free(q_local);
+        free(p_block);
+        free(q_block);
+        free(q_block_folded);
+        /* free(p_dot_q_q_dot_q); */
         MPI_Comm_free(&worker_comm);
     }
 
