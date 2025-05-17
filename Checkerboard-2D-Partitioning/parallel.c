@@ -25,17 +25,18 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-    if (argc < 2 || argc > 3)
+    if (argc < 3 || argc > 4)
     {
         if (world_rank == MASTER)
         {
-            fprintf(stderr, "Usage: %s <input_file> [output_file]\n", argv[0]);
+            fprintf(stderr, "Usage: %s <matrix_file> <vector_file> [output_file]\n", argv[0]);
         }
         MPI_Finalize();
         return EXIT_FAILURE;
     }
-    const char *input_file_name = argv[1];
-    const char *output_file_name = (argc == 3) ? argv[2] : "p_output.txt";
+    const char *matrix_file_name = argv[1];
+    const char *vector_file_name = argv[2];
+    const char *output_file_name = (argc == 4) ? argv[3] : "output_x.txt";
 
     if (world_size < 2)
     {
@@ -71,26 +72,58 @@ int main(int argc, char *argv[])
 
     if (world_rank == MASTER)
     {
-        FILE *input_file = fopen(input_file_name, "r");
-        if (!input_file)
+        FILE *matrix_file = fopen(matrix_file_name, "r");
+        if (!matrix_file)
         {
             perror("fopen");
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
+        int rows, cols;
+        if (fscanf(matrix_file, "%d %d", &rows, &cols) != 2)
+        {
+            fprintf(stderr, "Error: could not read matrix size\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        if (rows != cols)
+        {
+            fprintf(stderr, "Error: matrix is not square\n");
+            fclose(matrix_file);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        n = rows;
 
-        fscanf(input_file, "%d", &n);
+        FILE *vector_file = fopen(vector_file_name, "r");
+        if (!vector_file)
+        {
+            perror("fopen vector_file");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        if (fscanf(vector_file, "%d %d", &rows, &cols) != 2)
+        {
+            fprintf(stderr, "Error: could not read vector size\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        if (rows != n || cols != 1)
+        {
+            fprintf(stderr, "Error: vector dimension mismatch (got %dx%d, expected %dx1)\n",
+                    rows, cols, n);
+            fclose(vector_file);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
 
         if (n % worker_size_sqrt != 0)
         {
             fprintf(stderr, "Error: n (%d) is not divisible by worker_size_sqrt (%d)\n", n, worker_size_sqrt);
-            fclose(input_file);
+            fclose(matrix_file);
+            fclose(vector_file);
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
         if (n % worker_size != 0)
         {
             fprintf(stderr, "Error: n (%d) is not divisible by worker_size (%d)\n", n, worker_size);
-            fclose(input_file);
+            fclose(matrix_file);
+            fclose(vector_file);
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
@@ -105,14 +138,23 @@ int main(int argc, char *argv[])
         {
             for (int j = 0; j < n; ++j)
             {
-                fscanf(input_file, "%lf", &A[i * n + j]);
+                if (fscanf(matrix_file, "%lf", &A[i * n + j]) != 1)
+                {
+                    fprintf(stderr, "Error reading matrix element at position (%d, %d)\n", i, j);
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                }
             }
         }
         for (int i = 0; i < n; ++i)
         {
-            fscanf(input_file, "%lf", &b[i]);
+            if (fscanf(vector_file, "%lf", &b[i]) != 1)
+            {
+                fprintf(stderr, "Error reading vector element at position %d\n", i);
+                MPI_Abort(MPI_COMM_WORLD, 1);
+            }
         }
-        fclose(input_file);
+        fclose(matrix_file);
+        fclose(vector_file);
 
         block_length = n / worker_size_sqrt;
         block_length_separated = n / worker_size;
@@ -155,7 +197,7 @@ int main(int argc, char *argv[])
         }
 
         FILE *output_file = fopen(output_file_name, "w");
-        for (int i = 0; i < n; ++i)
+        for (int i = 0; i < (n < 20 ? n : 20); ++i)
         {
             fprintf(output_file, "%.8f\n", result[i]);
         }

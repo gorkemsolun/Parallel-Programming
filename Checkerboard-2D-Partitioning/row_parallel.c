@@ -20,17 +20,18 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-    if (argc < 2 || argc > 3)
+    if (argc < 3 || argc > 4)
     {
         if (world_rank == MASTER)
         {
-            fprintf(stderr, "Usage: %s <input_file> [output_file]\n", argv[0]);
+            fprintf(stderr, "Usage: %s <matrix_file> <vector_file> [output_file]\n", argv[0]);
         }
         MPI_Finalize();
         return EXIT_FAILURE;
     }
-    const char *input_file_name = argv[1];
-    const char *output_file_name = (argc == 3) ? argv[2] : "p_output.txt";
+    const char *matrix_file_name = argv[1];
+    const char *vector_file_name = argv[2];
+    const char *output_file_name = (argc == 4) ? argv[3] : "output_x.txt";
 
     if (world_size < 2)
     {
@@ -54,38 +55,71 @@ int main(int argc, char *argv[])
 
     if (world_rank == MASTER)
     {
-        FILE *input_file = fopen(input_file_name, "r");
-        if (!input_file)
+        FILE *matrix_file = fopen(matrix_file_name, "r");
+        if (!matrix_file)
         {
-            perror("fopen");
+            perror("fopen matrix_file");
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
-        fscanf(input_file, "%d", &n);
 
-        // Check if n is divisible by world_size - 1
+        int rows, cols;
+        if (fscanf(matrix_file, "%d %d", &rows, &cols) != 2)
+        {
+            fprintf(stderr, "Error: could not read matrix size\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        if (rows != cols)
+        {
+            fprintf(stderr, "Error: matrix must be square (rows=%d, cols=%d)\n", rows, cols);
+            fclose(matrix_file);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        n = rows;
+        rows_per_worker = n / (world_size - 1);
+
         if (n % (world_size - 1) != 0)
         {
             fprintf(stderr, "Error: n (%d) is not divisible by world_size - 1 (%d)\n", n, world_size - 1);
-            fclose(input_file);
+            fclose(matrix_file);
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
-        // Assuming n is divisible by world_size - 1
-        rows_per_worker = n / (world_size - 1);
-        A = malloc(n * n * sizeof(double));
-        b = malloc(n * sizeof(double));
+        A = malloc((size_t)n * n * sizeof(double));
         for (int i = 0; i < n; ++i)
         {
             for (int j = 0; j < n; ++j)
             {
-                fscanf(input_file, "%lf", &A[i * n + j]);
+                fscanf(matrix_file, "%lf", &A[i * n + j]);
             }
         }
+        fclose(matrix_file);
+
+        FILE *vector_file = fopen(vector_file_name, "r");
+        if (!vector_file)
+        {
+            perror("fopen vector_file");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        if (fscanf(vector_file, "%d %d", &rows, &cols) != 2)
+        {
+            fprintf(stderr, "Error: could not read vector size\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        if (rows != n || cols != 1)
+        {
+            fprintf(stderr, "Error: vector dimension mismatch (got %dx%d, expected %dx1)\n",
+                    rows, cols, n);
+            fclose(vector_file);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        b = malloc((size_t)n * sizeof(double));
         for (int i = 0; i < n; ++i)
         {
-            fscanf(input_file, "%lf", &b[i]);
+            fscanf(vector_file, "%lf", &b[i]);
         }
-        fclose(input_file);
+        fclose(vector_file);
 
         for (int w = 1; w < world_size; ++w)
         {
@@ -112,7 +146,7 @@ int main(int argc, char *argv[])
         }
 
         FILE *output_file = fopen(output_file_name, "w");
-        for (int i = 0; i < n; ++i)
+        for (int i = 0; i < (n < 20 ? n : 20); ++i)
         {
             fprintf(output_file, "%.8f\n", result[i]);
         }
