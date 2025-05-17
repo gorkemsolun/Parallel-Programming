@@ -25,13 +25,11 @@ make
 mpirun -np 5 ./parallel input_8_m.txt input_8_v.txt output_8_5_2d.txt
 mpirun -np 5 ./row_parallel input_8_m.txt input_8_v.txt output_8_5_1d.txt
 
-# Generate input files
-./generate_input 1024 input_1024_m.txt input_1024_v.txt
-./generate_input 2048 input_2048_m.txt input_2048_v.txt
-./generate_input 4096 input_4096_m.txt input_4096_v.txt
-./generate_input 8192 input_8192_m.txt input_8192_v.txt
 
 # Strong scaling 1
+
+mpirun -np 5 ./parallel input_4096_m.txt input_4096_v.txt output_4096_5_2d_strong.txt
+mpirun -np 5 ./row_parallel input_4096_m.txt input_4096_v.txt output_4096_5_1d_strong.txt
 
 mpirun -np 17 ./parallel input_4096_m.txt input_4096_v.txt output_4096_16_2d_strong.txt
 mpirun -np 17 ./row_parallel input_4096_m.txt input_4096_v.txt output_4096_16_1d_strong.txt
@@ -43,6 +41,9 @@ mpirun -np 257 ./parallel input_4096_m.txt input_4096_v.txt output_4096_256_2d_s
 mpirun -np 257 ./row_parallel input_4096_m.txt input_4096_v.txt output_4096_256_1d_strong.txt
 
 # Strong scaling 2
+
+mpirun -np 5 ./parallel input_8192_m.txt input_8192_v.txt output_8192_5_2d_strong.txt
+mpirun -np 5 ./row_parallel input_8192_m.txt input_8192_v.txt output_8192_5_1d_strong.txt
 
 mpirun -np 17 ./parallel input_8192_m.txt input_8192_v.txt output_8192_16_2d_strong.txt
 mpirun -np 17 ./row_parallel input_8192_m.txt input_8192_v.txt output_8192_16_1d_strong.txt
