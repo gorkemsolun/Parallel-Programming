@@ -223,19 +223,37 @@ int main(int argc, char *argv[])
             int worker_column_index = worker_rank % worker_size_sqrt;
             int worker_row_index = worker_rank / worker_size_sqrt;
 
+            MPI_Request requests[2 * (worker_size_sqrt - 1)];
+            int request_index = 0;
+
             for (int i = 0; i < worker_size_sqrt; ++i)
             {
                 destination_rank = i * worker_size_sqrt + worker_column_index;
                 int block_offset = i * block_length_separated;
+
                 if (i == worker_row_index)
                 {
-                    memcpy(p_block + block_offset, p_local, block_length_separated * sizeof(double));
+                    memcpy(p_block + block_offset,
+                           p_local,
+                           block_length_separated * sizeof(double));
                 }
                 else
                 {
-                    MPI_Sendrecv(p_local, block_length_separated, MPI_DOUBLE, destination_rank, P_DISTRIBUTE_TAG, p_block + block_offset, block_length_separated, MPI_DOUBLE, destination_rank, P_DISTRIBUTE_TAG, worker_comm, MPI_STATUS_IGNORE);
+                    MPI_Irecv(p_block + block_offset,
+                              block_length_separated, MPI_DOUBLE,
+                              destination_rank, P_DISTRIBUTE_TAG,
+                              worker_comm,
+                              &requests[request_index++]);
+
+                    MPI_Isend(p_local,
+                              block_length_separated, MPI_DOUBLE,
+                              destination_rank, P_DISTRIBUTE_TAG,
+                              worker_comm,
+                              &requests[request_index++]);
                 }
             }
+
+            MPI_Waitall(request_index, requests, MPI_STATUSES_IGNORE);
 
             /* printf("worker %d p_block[0]: %f\n", worker_rank, p_block[0]);
             printf("worker %d p_block[1]: %f\n", worker_rank, p_block[1]);
@@ -259,21 +277,49 @@ int main(int argc, char *argv[])
 
             memcpy(q_block_folded, q_block, block_length * sizeof(double));
             int worker_row_start_rank = worker_row_index * worker_size_sqrt;
+
+            int peer_count = worker_size_sqrt - 1;
+            MPI_Request *reqs = malloc(2 * peer_count * sizeof(MPI_Request));
+            double **temp_buffers = malloc(peer_count * sizeof(double *));
+
+            request_index = 0;
+            int buffer_index = 0;
+
             for (int j = 0; j < worker_size_sqrt; ++j)
             {
                 if (j == worker_column_index)
                 {
                     continue;
                 }
+
                 destination_rank = worker_row_start_rank + j;
+
                 double *temp_q_block = malloc(block_length * sizeof(double));
-                MPI_Sendrecv(q_block, block_length, MPI_DOUBLE, destination_rank, Q_DISTRIBUTE_TAG, temp_q_block, block_length, MPI_DOUBLE, destination_rank, Q_DISTRIBUTE_TAG, worker_comm, MPI_STATUS_IGNORE);
+                temp_buffers[buffer_index++] = temp_q_block;
+
+                MPI_Irecv(temp_q_block, block_length, MPI_DOUBLE,
+                          destination_rank, Q_DISTRIBUTE_TAG,
+                          worker_comm, &reqs[request_index++]);
+
+                MPI_Isend(q_block, block_length, MPI_DOUBLE,
+                          destination_rank, Q_DISTRIBUTE_TAG,
+                          worker_comm, &reqs[request_index++]);
+            }
+
+            MPI_Waitall(2 * peer_count, reqs, MPI_STATUSES_IGNORE);
+
+            for (int k = 0; k < peer_count; ++k)
+            {
+                double *temp_q_block = temp_buffers[k];
                 for (int i = 0; i < block_length; ++i)
                 {
                     q_block_folded[i] += temp_q_block[i];
                 }
                 free(temp_q_block);
             }
+
+            free(temp_buffers);
+            free(reqs);
 
             /* printf("worker %d q_block_folded[0]: %f\n", worker_rank, q_block_folded[0]);
             printf("worker %d q_block_folded[1]: %f\n", worker_rank, q_block_folded[1]);
@@ -363,6 +409,7 @@ int main(int argc, char *argv[])
         free(q_block);
         free(q_block_folded);
         /* free(p_dot_q_q_dot_q); */
+        free(q_local_transposed);
         MPI_Comm_free(&worker_comm);
     }
 
